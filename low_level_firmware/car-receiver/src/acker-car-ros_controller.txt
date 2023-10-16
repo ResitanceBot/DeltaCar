@@ -1,0 +1,188 @@
+/// CONTROL MANUAL ACKER-CAR
+
+//* DEPENDENCIAS EXTERNAS
+// FRAMEWORK ARDUINO
+#include <Arduino.h>
+// SPI
+#include <Wire.h>
+#include <SPI.h>
+// WIFI
+#include <ESP8266WiFi.h>
+#include <WiFiUDP.h>
+#include "config.h" // Sustituir con datos de red
+#include "UDP.hpp"
+#include "ESP8266_Utils.hpp"
+#include "ESP8266_Utils_UDP.hpp"
+// Servos Cola
+#include <Servo.h>
+// Calculos
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+//! SELECT WIFI ACCES POINT
+// #define WEMOS_WIFI
+#define ROUTER_WIFI
+
+//* DEFINICION PINES
+#define IN2 5  // D1
+#define IN1 4  // D2
+#define IN4 0  // D3
+#define IN3 2  // D4
+#define ENA 14 // D5
+#define ENB 12 // D6
+
+//* CABECERAS FUNCIONES Y SUBRUTINAS
+void receiveCommand();
+
+//* VARIABLES GLOBALES
+int motor = 0; // Velocidad motor delantero %
+int speed = 20; // Velocidad 0-255 avance tracción
+int dir = 0;   // Direccion 0-255 velocidad giro
+bool forward = true;
+bool left = false;
+bool stop = true;
+bool giro = false;
+// variables UDP commands
+String UDP_msg;
+
+//* CONFIGURACION INICIAL DEL SISTEMA
+void setup()
+{
+  //* PUERTO SERIE
+  Serial.begin(115200);
+  while (!Serial)
+    delay(10);
+
+  //* PINES
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  //* WIFI / UDP
+  Serial.println("STARTING WIFI CONECTION");
+#ifdef WEMOS_WIFI
+  ConnectWiFi_AP();
+#endif
+#ifdef ROUTER_WIFI
+  ConnectWiFi_STA();
+#endif
+  ConnectUDP();
+  Serial.println("WIFI OK");
+  delay(100);
+}
+
+//* FUNCION PRINCIPAL
+void loop()
+{
+  //! RECIBIR COMANDOS
+  receiveCommand();
+
+  //! DIRECCION (MOTOR DELANTERO)
+  if (giro) // SE DARA GIRO
+  {
+    // SENTIDO
+    if (left) // IZQUIERDA
+    {
+      digitalWrite(IN1, HIGH);
+      digitalWrite(IN2, LOW);
+    }
+    else // DERECHA
+    {
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, HIGH);
+    }
+    dir = 170;
+    analogWrite(ENA, dir);
+  }
+  else // NO SE DARA GIRO
+  {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+  }
+
+  //! TRACCION (MOTOR TRASERO)
+  if (!stop) // ACTIVADO
+  {
+    // SENTIDO
+    if (forward) // AVANCE
+    {
+      digitalWrite(IN3, HIGH);
+      digitalWrite(IN4, LOW);
+    }
+    else // RETROCESO
+    {
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, HIGH);
+    }
+    speed = map(motor, 0, 100, 30, 255);
+    analogWrite(ENB, speed);
+  }
+  else // PARADO
+  {
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, LOW);
+  }
+
+  // COMPROBACIÓN CONEXION WIFI
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    stop = true;
+    giro = false;
+  }
+}
+
+//* FUNCIONES AUXILIARES Y SUBRUTINAS
+void receiveCommand()
+{
+  UDP_msg = GetUDP_Packet();
+  Serial.print("Msg: ");
+  Serial.println(UDP_msg);
+
+  if (UDP_msg != "Null")
+  {
+    //* TRACCION
+    if (UDP_msg == "S")
+    {
+      stop = true;
+    }
+    else if (UDP_msg == "F")
+    {
+      stop = false;
+      forward = true;
+    }
+    else if (UDP_msg == "B")
+    {
+      stop = false;
+      forward = false;
+    }
+    else if (UDP_msg == "I")
+    {
+      motor += 10;
+      if (motor >= 100)
+        motor = 100;
+    }
+    else if (UDP_msg == "D")
+    {
+      motor -= 10;
+      if (motor <= 0)
+        motor = 0;
+    }
+    //* DIRECCION
+    else if (UDP_msg == "G")
+    {
+      giro = false;
+    }
+    else if (UDP_msg == "R")
+    {
+      giro = true;
+      left = false;
+    }
+    else if (UDP_msg == "L")
+    {
+      giro = true;
+      left = true;
+    }
+  }
+}
