@@ -79,7 +79,7 @@ def filter_and_enhance(video_path):
     cv2.destroyAllWindows()
 
 # Ruta del video
-video_path = 'videaco.mp4'
+video_path = 'video_low_resolution.mp4'
 
 # Llamar a la función para filtrar y mejorar el video
 filter_and_enhance(video_path)
